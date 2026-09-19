@@ -84,6 +84,7 @@ def _identity_to_out(ident: m.UniversityIdentity) -> s.IdentityOut:
         student_no=ident.student_no,
         class_id=ident.class_id,
         class_name=ident.class_.name if ident.class_ else None,
+        photo_url=ident.photo_url,
         verified_at=ident.verified_at,
     )
 
@@ -255,6 +256,9 @@ def admin_update_identity(
         ident.verified_at = _utcnow() if data.status == m.IdentityStatus.VERIFIED else ident.verified_at
     if data.role is not None:
         ident.role = data.role
+    if data.photo_url is not None:
+        photo = data.photo_url.strip()
+        ident.photo_url = photo or None
     db.add(ident)
     db.commit()
     db.refresh(ident, attribute_names=["university", "class_"])

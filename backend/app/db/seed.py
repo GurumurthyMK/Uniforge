@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session_factory
 from app.modules.identity import models as m
 from app.modules.identity import security as sec
+from app.modules.profile import models as pm
 
 DEMO_PASSWORD = "Demo1234!"
 DEMO_ENROLLMENT_CODE = "UNIFORGE-DEMO-2026"
@@ -110,6 +111,8 @@ def seed(db: Session) -> dict[str, int]:
             user.is_active = True
         if user.profile is None:
             db.add(m.Profile(user_id=user.id, display_name=display_name))
+            db.flush()
+        _enrich_demo_profile(db, user, email)
         ident = db.scalar(
             select(m.UniversityIdentity).where(
                 m.UniversityIdentity.user_id == user.id,
@@ -138,6 +141,103 @@ def seed(db: Session) -> dict[str, int]:
 
     db.commit()
     return created
+
+
+DEMO_SKILLS = ["python", "typescript", "machine-learning", "public-speaking", "sql", "ui-design"]
+DEMO_INTERESTS = ["robotics", "chess", "photography", "hiking", "open-source"]
+DEMO_HOBBIES = ["cycling", "baking", "gaming"]
+
+# email -> (headline, bio, github, linkedin, career, research, skills, interests, hobbies)
+DEMO_PROFILES: dict[str, tuple] = {
+    "ada@demo-university.edu": (
+        "CS undergrad into robotics",
+        "Second-year CS student. I build small robots and like clean APIs.",
+        "https://github.com/ada-demo",
+        "https://linkedin.com/in/ada-demo",
+        "Robotics software, backend engineering",
+        "Human-robot interaction",
+        ["python", "machine-learning", "sql"],
+        ["robotics", "open-source"],
+        ["cycling"],
+    ),
+    "ben@demo-university.edu": (
+        "Frontend enthusiast",
+        "CS student focused on accessible web interfaces.",
+        None,
+        None,
+        "Frontend engineering, design systems",
+        None,
+        ["typescript", "ui-design"],
+        ["photography"],
+        ["gaming", "baking"],
+    ),
+    "cara@demo-university.edu": (
+        "Data-curious BSc student",
+        "Love turning messy datasets into clear stories.",
+        "https://github.com/cara-demo",
+        None,
+        "Data analysis",
+        "Visual analytics",
+        ["python", "sql", "public-speaking"],
+        ["chess"],
+        ["hiking"],
+    ),
+    "rep@demo-university.edu": (
+        "Class rep for CS-2024-A",
+        "Your point of contact for class forums and events.",
+        None,
+        None,
+        "Community building",
+        None,
+        ["public-speaking"],
+        ["open-source"],
+        [],
+    ),
+}
+
+
+def _enrich_demo_profile(db, user: m.User, email: str) -> None:
+    """Idempotent demo content: catalog rows + profile fields + edges."""
+    for name in DEMO_SKILLS:
+        if db.scalar(select(pm.Skill).where(pm.Skill.name == name)) is None:
+            db.add(pm.Skill(name=name))
+    for name in DEMO_INTERESTS:
+        row = db.scalar(select(pm.Interest).where(pm.Interest.name == name))
+        if row is None:
+            db.add(pm.Interest(name=name, kind=pm.InterestKind.INTEREST.value))
+    for name in DEMO_HOBBIES:
+        row = db.scalar(select(pm.Interest).where(pm.Interest.name == name))
+        if row is None:
+            db.add(pm.Interest(name=name, kind=pm.InterestKind.HOBBY.value))
+    db.flush()
+
+    spec = DEMO_PROFILES.get(email)
+    if spec is None:
+        return
+    headline, bio, github, linkedin, career, research, skills, interests, hobbies = spec
+    profile = user.profile
+    if profile is None:  # pragma: no cover - created by caller
+        return
+    profile.headline = profile.headline or headline
+    profile.bio = profile.bio or bio
+    profile.github_url = profile.github_url or github
+    profile.linkedin_url = profile.linkedin_url or linkedin
+    profile.career_interests = profile.career_interests or career
+    profile.research_interests = profile.research_interests or research
+    for name in skills:
+        skill = db.scalar(select(pm.Skill).where(pm.Skill.name == name))
+        if db.scalar(
+            select(pm.ProfileSkill).where(pm.ProfileSkill.user_id == user.id, pm.ProfileSkill.skill_id == skill.id)
+        ) is None:
+            db.add(pm.ProfileSkill(user_id=user.id, skill_id=skill.id, source="seed"))
+    for name in interests + hobbies:
+        interest = db.scalar(select(pm.Interest).where(pm.Interest.name == name))
+        if db.scalar(
+            select(pm.ProfileInterest).where(
+                pm.ProfileInterest.user_id == user.id, pm.ProfileInterest.interest_id == interest.id
+            )
+        ) is None:
+            db.add(pm.ProfileInterest(user_id=user.id, interest_id=interest.id, source="seed"))
 
 
 def main() -> None:

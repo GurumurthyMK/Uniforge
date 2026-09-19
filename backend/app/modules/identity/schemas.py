@@ -117,6 +117,7 @@ class IdentityOut(BaseModel):
     student_no: str | None
     class_id: uuid.UUID | None
     class_name: str | None = None
+    photo_url: str | None = None  # university-controlled photo; admin-written only
     verified_at: datetime | None
 
 
@@ -164,8 +165,11 @@ class AuthOut(BaseModel):
 class AdminIdentityUpdateIn(BaseModel):
     """University-admin action on an identity. Students can never call this."""
 
+    model_config = ConfigDict(extra="forbid")
+
     status: IdentityStatus | None = None
     role: Role | None = None
+    photo_url: str | None = None
 
     @field_validator("status")
     @classmethod

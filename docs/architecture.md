@@ -137,3 +137,35 @@ Deliberately not built in 1A: similarity scoring, recommendations, PageRank.
 - `/` renders the shell; `/health` shows live backend JSON; `ApiStatus`
   component reports connected/unreachable without crashing.
 - `pytest -q` passes; `tsc --noEmit` and `next build` pass.
+
+## 9. Profile domain (implemented in 2A)
+Two concepts, enforced at every layer — never merged:
+
+| | VERIFIED UNIVERSITY IDENTITY | STUDENT-CONTROLLED PROFILE |
+|---|---|---|
+| Source | university records / admin approval | the student |
+| Tables | universities, departments, programs, batches, classes, university_identities | profiles, skills, interests, profile_skills, profile_interests |
+| Fields | name, university, student_no, dept/program/batch/class, role, status, photo_url | headline, bio, avatar_url, links, career/research interests, skill/interest edges |
+| Write path | demo verification flow or admin API only | `PATCH /profile/me` (owner only) |
+| Read path | `/auth/me`, identity cards (read-only UI) | own full view, public view for same-university verified users |
+
+- Protection is structural: `ProfileEditIn` uses `extra="forbid"`, so verified
+  fields sent to the profile endpoint are rejected with 422; no code path
+  writes identity columns from student input. Public profiles exclude email
+  and student_no; cross-university access is 403 (checked server-side from the
+  caller's verified identities).
+- Skills/interests are a canonical catalog (normalized lowercase, unique) plus
+  edge tables with a `source` column (`manual` today, `seed` for demo data).
+  These edges are the future talent graph in relational form
+  (Student→HAS_SKILL→Skill, Student→HAS_INTEREST→Interest); evidence/import
+  pipelines will only add new `source` values. Career/research interests stay
+  free text — candidates for future nodes, not nodes yet.
+- Photos without new infrastructure: students link an `avatar_url`; admins may
+  set the university-controlled `photo_url`. Server-side uploads via presigned
+  S3 URLs are the documented upgrade (still no S3 in the MVP).
+- Directory (class detail/roster, structure tree) is same-university-verified
+  only, paginated (`limit ≤ 100`). Structure admin is create + rename; no
+  deletes in the MVP (cascades are destructive — explicit decision).
+- Frontend: `/app/profile`, `/app/profile/edit`, `/app/people/[id]`,
+  `/app/class`, `/app/admin`, plus an `/app` dashboard with academic
+  breadcrumb. UI distinguishes verified (locked) cards from editable cards.

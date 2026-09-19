@@ -8,7 +8,7 @@ the real database in the verification step.
 import uuid
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
@@ -83,7 +83,14 @@ def university(db_session):
 
 @pytest.fixture()
 def class_id(db_session, university):
-    cls = db_session.query(m.Class).first()
+    cls = db_session.scalar(
+        select(m.Class)
+        .join(m.Batch, m.Class.batch_id == m.Batch.id)
+        .join(m.Program, m.Batch.program_id == m.Program.id)
+        .join(m.Department, m.Program.department_id == m.Department.id)
+        .where(m.Department.university_id == university.id)
+        .order_by(m.Class.name)
+    )
     assert cls is not None
     return str(cls.id)
 

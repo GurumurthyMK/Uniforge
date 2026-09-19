@@ -11,6 +11,7 @@ from app.core.config import get_settings
 # Import Base + all domain models so metadata is complete for autogenerate.
 from app.db.base import Base  # noqa: F401
 from app.modules.identity import models  # noqa: F401
+from app.modules.profile import models as profile_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

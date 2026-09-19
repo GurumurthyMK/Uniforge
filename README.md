@@ -50,8 +50,12 @@ npm run dev
 2. Pick "Demo University", any class, a student number, enrollment code
    `UNIFORGE-DEMO-2026`, and a `@demo-university.edu` email → identity is
    VERIFIED instantly. Any mismatch → PENDING, an admin approves it.
-3. You land on `/app`: verified university identity (🔒 read-only) next to
-   your editable student profile (✏️).
+3. You land on `/app`: academic breadcrumb, verified university identity
+   (locked, read-only) next to your editable student profile.
+4. Explore `/app/profile` (full profile), `/app/profile/edit` (headline, bio,
+   links, skills, interests, hobbies), `/app/class` (classmates), and
+   `/app/people/<id>` (public profiles). Admins get `/app/admin` for the
+   academic hierarchy.
 
 Or skip registration: log in as `ada@demo-university.edu` / `Demo1234!`.
 All seeded users share the password `Demo1234!` (see `backend/app/db/seed.py`
@@ -81,11 +85,11 @@ Codes: `NOT_FOUND`, `VALIDATION_ERROR` (422), `HTTP_ERROR`, `AUTH_FAILED`
 ## Project layout
 
 ```
-backend/app/{core,api/v1,db,modules/identity}  # config, routers, session, domain
+backend/app/{core,api/v1,db,modules/identity,modules/profile}
 backend/alembic/                                # migrations (reviewed as code)
-backend/tests/                                  # pytest (health + auth)
-frontend/app/                                   # /, /health, /login, /register, /app
-frontend/{components,lib}/                      # NavBar, ApiStatus, api client, auth
+backend/tests/                                  # pytest (health + auth + profile)
+frontend/app/                                   # /, /health, /login, /register, /app/...
+frontend/{components,lib}/                      # cards, api client, auth
 frontend/middleware.ts                          # UX gate for /app (API authorizes)
 docs/architecture.md                            # system, DB, auth, graph, AWS
 docker-compose.yml                              # local Postgres

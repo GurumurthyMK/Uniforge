@@ -165,13 +165,28 @@ class User(Base, TimestampMixin):
 
 
 class Profile(Base, TimestampMixin):
-    """STUDENT-CONTROLLED profile. Free-form; never treated as verified."""
+    """STUDENT-CONTROLLED profile. Free-form; never treated as verified.
+
+    Only the columns on this table are editable via the profile API. Every
+    university-controlled fact lives on UniversityIdentity / academic tables,
+    which have no student-facing write endpoint.
+    """
 
     __tablename__ = "profiles"
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     display_name: Mapped[str | None] = mapped_column(String(100))
+    headline: Mapped[str | None] = mapped_column(String(150))  # e.g. "CS undergrad into robotics"
     bio: Mapped[str | None] = mapped_column(Text)
+    # Student-set photo URL. No S3 in the MVP: users link an externally hosted
+    # image. Server-side upload (presigned S3 URLs) is the documented upgrade.
+    avatar_url: Mapped[str | None] = mapped_column(String(500))
+    github_url: Mapped[str | None] = mapped_column(String(500))
+    linkedin_url: Mapped[str | None] = mapped_column(String(500))
+    portfolio_url: Mapped[str | None] = mapped_column(String(500))
+    website_url: Mapped[str | None] = mapped_column(String(500))
+    career_interests: Mapped[str | None] = mapped_column(Text)
+    research_interests: Mapped[str | None] = mapped_column(Text)
 
     user: Mapped[User] = relationship(back_populates="profile")
 
@@ -206,6 +221,9 @@ class UniversityIdentity(Base, TimestampMixin):
     # University-controlled student number, e.g. "DEMO-2024-001".
     student_no: Mapped[str | None] = mapped_column(String(50))
     class_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("classes.id", ondelete="SET NULL"))
+    # University-controlled photo (e.g. from student ID card system). Settable
+    # only via admin endpoints; students cannot write this column.
+    photo_url: Mapped[str | None] = mapped_column(String(500))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="identities")

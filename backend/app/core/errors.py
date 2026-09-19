@@ -47,8 +47,28 @@ async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSO
 async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=error_payload("VALIDATION_ERROR", "Request validation failed.", {"errors": exc.errors()}),
+        content=error_payload(
+            "VALIDATION_ERROR", "Request validation failed.", {"errors": _json_safe_errors(exc.errors())}
+        ),
     )
+
+
+def _json_safe_errors(errors: list[dict]) -> list[dict]:
+    """Pydantic v2 embeds raw exception objects in error `ctx`; coerce them
+    to strings so the envelope stays JSON-serializable."""
+
+    def _safe(value: object) -> object:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, list):
+            return [_safe(v) for v in value]
+        if isinstance(value, dict):
+            return {str(k): _safe(v) for k, v in value.items()}
+        if isinstance(value, tuple):
+            return [_safe(v) for v in value]
+        return str(value)
+
+    return [{**e, "ctx": _safe(e.get("ctx"))} if "ctx" in e else e for e in errors]
 
 
 async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:  # pragma: no cover

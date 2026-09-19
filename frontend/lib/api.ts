@@ -101,10 +101,16 @@ export type Identity = {
   student_no: string | null;
   class_id: string | null;
   class_name: string | null;
+  photo_url: string | null;
   verified_at: string | null;
 };
 
-export type Profile = { display_name: string | null; bio: string | null };
+export type Profile = {
+  display_name: string | null;
+  bio: string | null;
+  headline?: string | null;
+  avatar_url?: string | null;
+};
 
 export type Me = {
   id: string;
@@ -153,4 +159,176 @@ export function fetchMe(token: string): Promise<Me> {
 
 export function updateProfile(token: string, input: { display_name?: string; bio?: string }): Promise<Profile> {
   return request<Profile>("/api/v1/auth/profile", { token, method: "PATCH", body: input });
+}
+
+// ---- Profile & directory types ----
+
+export type AcademicNode = { id: string; name: string };
+
+export type AcademicContext = {
+  university: AcademicNode;
+  department: AcademicNode | null;
+  program: AcademicNode | null;
+  batch: AcademicNode | null;
+  class: AcademicNode | null;
+};
+
+export type InterestTag = { name: string; kind: "INTEREST" | "HOBBY" };
+
+export type FullProfile = {
+  user_id: string;
+  display_name: string | null;
+  headline: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  github_url: string | null;
+  linkedin_url: string | null;
+  portfolio_url: string | null;
+  website_url: string | null;
+  career_interests: string | null;
+  research_interests: string | null;
+  skills: string[];
+  interests: InterestTag[];
+  academic_context: AcademicContext | null;
+  role: Role | null;
+  verification_status: IdentityStatus | null;
+  photo_url: string | null;
+};
+
+export type PublicProfile = Omit<FullProfile, "role" | "verification_status" | "photo_url"> & {
+  role: Role;
+  verification_status: IdentityStatus;
+};
+
+export type ProfileEdit = {
+  display_name?: string;
+  headline?: string;
+  bio?: string;
+  avatar_url?: string;
+  github_url?: string;
+  linkedin_url?: string;
+  portfolio_url?: string;
+  website_url?: string;
+  career_interests?: string;
+  research_interests?: string;
+  skills?: string[];
+  interests?: string[];
+  hobbies?: string[];
+};
+
+export type ClassMember = {
+  user_id: string;
+  display_name: string | null;
+  role: Role;
+  verification_status: IdentityStatus;
+};
+
+export type ClassDetail = {
+  class: AcademicNode;
+  batch: AcademicNode;
+  program: AcademicNode;
+  department: AcademicNode;
+  university: AcademicNode;
+  member_count: number;
+  class_rep: ClassMember | null;
+};
+
+export type ClassMembersPage = {
+  items: ClassMember[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type StructureClass = { id: string; name: string; code: string; member_count: number };
+export type StructureBatch = { id: string; name: string; start_year: number | null; classes: StructureClass[] };
+export type StructureProgram = {
+  id: string;
+  name: string;
+  code: string;
+  degree_level: string | null;
+  batches: StructureBatch[];
+};
+export type StructureDepartment = { id: string; name: string; code: string; programs: StructureProgram[] };
+export type Structure = { university_id: string; university_name: string; departments: StructureDepartment[] };
+
+// ---- Profile & directory API ----
+
+export function fetchMyProfile(token: string): Promise<FullProfile> {
+  return request<FullProfile>("/api/v1/profile/me", { token });
+}
+
+export function saveMyProfile(token: string, input: ProfileEdit): Promise<FullProfile> {
+  return request<FullProfile>("/api/v1/profile/me", { token, method: "PATCH", body: input });
+}
+
+export function fetchPublicProfile(token: string, userId: string): Promise<PublicProfile> {
+  return request<PublicProfile>(`/api/v1/profile/users/${userId}`, { token });
+}
+
+export function fetchClassDetail(token: string, classId: string): Promise<ClassDetail> {
+  return request<ClassDetail>(`/api/v1/directory/classes/${classId}`, { token });
+}
+
+export function fetchClassMembers(
+  token: string,
+  classId: string,
+  limit = 30,
+  offset = 0
+): Promise<ClassMembersPage> {
+  return request<ClassMembersPage>(
+    `/api/v1/directory/classes/${classId}/members?limit=${limit}&offset=${offset}`,
+    { token }
+  );
+}
+
+export function fetchStructure(token: string, universityId: string): Promise<Structure> {
+  return request<Structure>(`/api/v1/directory/universities/${universityId}/structure`, { token });
+}
+
+export function adminCreateDepartment(
+  token: string,
+  universityId: string,
+  input: { name: string; code: string }
+): Promise<{ id: string; name: string; code: string }> {
+  return request(`/api/v1/admin/structure/universities/${universityId}/departments`, {
+    token,
+    body: input,
+  });
+}
+
+export function adminCreateProgram(
+  token: string,
+  departmentId: string,
+  input: { name: string; code: string; degree_level?: string }
+): Promise<{ id: string; name: string; code: string }> {
+  return request(`/api/v1/admin/structure/departments/${departmentId}/programs`, {
+    token,
+    body: input,
+  });
+}
+
+export function adminCreateBatch(
+  token: string,
+  programId: string,
+  input: { name: string; start_year?: number }
+): Promise<{ id: string; name: string }> {
+  return request(`/api/v1/admin/structure/programs/${programId}/batches`, { token, body: input });
+}
+
+export function adminCreateClass(
+  token: string,
+  batchId: string,
+  input: { name: string; code: string }
+): Promise<{ id: string; name: string; code: string }> {
+  return request(`/api/v1/admin/structure/batches/${batchId}/classes`, { token, body: input });
+}
+
+export function adminRename(
+  token: string,
+  kind: "department" | "program" | "batch" | "class",
+  itemId: string,
+  input: { name?: string; code?: string }
+): Promise<{ id: string; name: string }> {
+  return request(`/api/v1/admin/structure/${kind}/${itemId}`, { token, method: "PATCH", body: input });
 }
