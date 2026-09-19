@@ -56,18 +56,36 @@ Forum, ForumMember, Post, Comment, Connection, Notification).
 - Migrations via Alembic, reviewed as code; no ad-hoc DDL.
 - Files/links live in posts as metadata; binary content goes to S3 (presigned
   URLs), never in Postgres bytea.
-- Local: `docker compose up -d db` (postgres:15-alpine + `pgdata` volume).
+- Local: `docker compose up -d db` (postgres:16-alpine + `pgdata` volume).
 - AWS: RDS PostgreSQL (db.t3.micro, Free Tier) + automated snapshots.
 
-## 4. Authentication strategy (placeholder — not implemented in 1A)
+## 4. Authentication & identity (implemented in 1B)
 
-- Phase 1B introduces: email+password (Argon2/bcrypt) + session/token auth.
-- University verification stays separate from login: a `UniversityIdentity`
-  record (university email domain match and/or admin approval) links a `User`
-  to a `University`; the social `Profile` remains student-controlled.
-- Authorization is server-side per request (university scope, class/forum
-  membership, class-rep role). The frontend never grants access.
-- Secrets via environment variables / AWS SSM Parameter Store; never committed.
+- Passwords: Argon2id (`argon2-cffi`); rehashed on login when parameters change.
+- Sessions: opaque `secrets.token_urlsafe` tokens, SHA-256-hashed at rest in
+  `sessions`, 7-day expiry (`SESSION_EXPIRE_DAYS`), immediate revoke on logout.
+  Clients send `Authorization: Bearer`. No JWTs (revocation is trivial).
+- Verification (demo-honest, no fake ERP): registration supplies university +
+  class + student_no + enrollment code. The identity becomes VERIFIED only if
+  the class belongs to the university (chain validated server-side), the email
+  domain matches the university, the enrollment code verifies, and the
+  student_no is free. Otherwise PENDING for admin review
+  (`GET/PATCH /admin/identities`, restricted to verified UNIVERSITY_ADMIN /
+  DEPARTMENT_ADMIN of that university — enforced in the service layer).
+- Roles (`Role` enum on `UniversityIdentity`): UNIVERSITY_ADMIN,
+  DEPARTMENT_ADMIN, FACULTY, STAFF, CLASS_REP, STUDENT. Registration always
+  creates STUDENT; promotion is admin-only. Class reps resolve via
+  identity(role=CLASS_REP, class_id=X) — no circular FK.
+- Identity vs profile: `UniversityIdentity` rows are read-only for students
+  (no PATCH endpoint exists); `Profile` is patched by the owner via
+  `PATCH /auth/profile`. The `/app` dashboard renders them as separate cards.
+- Frontend: token in localStorage + readable `uf_token` cookie; Next.js
+  middleware gates `/app/*` for UX only. Every protected API call is
+  re-authorized server-side per request.
+- Demo data: `python -m app.db.seed` (idempotent). All demo passwords
+  `Demo1234!`; enrollment code `UNIFORGE-DEMO-2026`. Upgrade path: HttpOnly
+  cookies + refresh rotation; real ERP via roster import into a new
+  `enrollment_roster` table without touching this model.
 
 ## 5. Graph strategy (derived from relational data — no graph DB)
 
