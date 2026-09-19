@@ -332,3 +332,142 @@ export function adminRename(
 ): Promise<{ id: string; name: string }> {
   return request(`/api/v1/admin/structure/${kind}/${itemId}`, { token, method: "PATCH", body: input });
 }
+
+// ---- Forum types & API ----
+
+export type ForumStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export type Forum = {
+  id: string;
+  class_id: string;
+  name: string;
+  description: string | null;
+  status: ForumStatus;
+  created_by: string | null;
+  approved_by: string | null;
+  created_at: string;
+  updated_at: string;
+  member_count: number;
+  is_member: boolean;
+};
+
+export function listClassForums(token: string, classId: string, includePending = false): Promise<Forum[]> {
+  const qs = includePending ? "?include_pending=true" : "";
+  return request<Forum[]>(`/api/v1/classes/${classId}/forums${qs}`, { token });
+}
+
+export function listForumProposals(token: string, classId: string): Promise<Forum[]> {
+  return request<Forum[]>(`/api/v1/classes/${classId}/forums/proposals`, { token });
+}
+
+export function proposeForum(token: string, classId: string, input: { name: string; description?: string | null }): Promise<Forum> {
+  return request<Forum>(`/api/v1/classes/${classId}/forums`, { token, body: input });
+}
+
+export function fetchForum(token: string, forumId: string): Promise<Forum> {
+  return request<Forum>(`/api/v1/forums/${forumId}`, { token });
+}
+
+export function reviewForum(token: string, forumId: string, status: ForumStatus): Promise<Forum> {
+  return request<Forum>(`/api/v1/forums/${forumId}/review`, { token, method: "PATCH", body: { status } });
+}
+
+export function joinForum(token: string, forumId: string): Promise<Forum> {
+  return request<Forum>(`/api/v1/forums/${forumId}/join`, { token, method: "POST", body: {} });
+}
+
+export function leaveForum(token: string, forumId: string): Promise<void> {
+  return request<void>(`/api/v1/forums/${forumId}/members/me`, { token, method: "DELETE" });
+}
+
+export function listJoinedForums(token: string): Promise<Forum[]> {
+  return request<Forum[]>(`/api/v1/forums/joined`, { token });
+}
+
+// ---- Discussion types & API ----
+
+export type Post = {
+  id: string;
+  forum_id: string;
+  author_id: string | null;
+  author_display_name: string | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  like_count: number;
+  comment_count: number;
+  liked_by_me: boolean;
+  is_own: boolean;
+};
+
+export type PostList = { items: Post[]; total: number; limit: number; offset: number };
+
+export type Comment = {
+  id: string;
+  post_id: string;
+  author_id: string | null;
+  author_display_name: string | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  is_own: boolean;
+};
+
+export type CommentList = { items: Comment[]; total: number; limit: number; offset: number };
+
+export type Notification = {
+  id: string;
+  user_id: string;
+  actor_id: string | null;
+  type: string;
+  post_id: string | null;
+  forum_id: string | null;
+  comment_id: string | null;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+};
+
+export function createPost(token: string, forumId: string, content: string): Promise<Post> {
+  return request<Post>(`/api/v1/forums/${forumId}/posts`, { token, method: "POST", body: { content } });
+}
+
+export function listPosts(token: string, forumId: string, limit = 20, offset = 0): Promise<PostList> {
+  return request<PostList>(`/api/v1/forums/${forumId}/posts?limit=${limit}&offset=${offset}`, { token });
+}
+
+export function fetchPost(token: string, forumId: string, postId: string): Promise<Post> {
+  return request<Post>(`/api/v1/forums/${forumId}/posts/${postId}`, { token });
+}
+
+export function deletePost(token: string, forumId: string, postId: string): Promise<void> {
+  return request<void>(`/api/v1/forums/${forumId}/posts/${postId}`, { token, method: "DELETE" });
+}
+
+export function createComment(token: string, forumId: string, postId: string, content: string): Promise<Comment> {
+  return request<Comment>(`/api/v1/forums/${forumId}/posts/${postId}/comments`, { token, method: "POST", body: { content } });
+}
+
+export function listComments(token: string, forumId: string, postId: string, limit = 50, offset = 0): Promise<CommentList> {
+  return request<CommentList>(`/api/v1/forums/${forumId}/posts/${postId}/comments?limit=${limit}&offset=${offset}`, { token });
+}
+
+export function deleteComment(token: string, forumId: string, postId: string, commentId: string): Promise<void> {
+  return request<void>(`/api/v1/forums/${forumId}/posts/${postId}/comments/${commentId}`, { token, method: "DELETE" });
+}
+
+export function likePost(token: string, forumId: string, postId: string): Promise<{ like_count: number; liked: boolean }> {
+  return request<{ like_count: number; liked: boolean }>(`/api/v1/forums/${forumId}/posts/${postId}/like`, { token, method: "POST", body: {} });
+}
+
+export function unlikePost(token: string, forumId: string, postId: string): Promise<{ like_count: number; liked: boolean }> {
+  return request<{ like_count: number; liked: boolean }>(`/api/v1/forums/${forumId}/posts/${postId}/like`, { token, method: "DELETE" });
+}
+
+export function listNotifications(token: string, limit = 20, offset = 0): Promise<Notification[]> {
+  return request<Notification[]>(`/api/v1/notifications?limit=${limit}&offset=${offset}`, { token });
+}
+
+export function markNotificationRead(token: string, notificationId: string): Promise<Notification> {
+  return request<Notification>(`/api/v1/notifications/${notificationId}/read`, { token, method: "PATCH", body: {} });
+}

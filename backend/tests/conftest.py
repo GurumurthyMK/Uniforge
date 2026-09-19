@@ -15,8 +15,10 @@ from sqlalchemy.orm import sessionmaker
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
+from app.modules.forum import models as fm  # noqa: F401 - ensure forum tables created
 from app.modules.identity import models as m
 from app.modules.identity import security as sec
+from app.modules.profile import models as pm  # noqa: F401
 
 
 @pytest.fixture()

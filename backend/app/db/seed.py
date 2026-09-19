@@ -139,6 +139,9 @@ def seed(db: Session) -> dict[str, int]:
             if ident.verified_at is None:
                 ident.verified_at = _utcnow()
 
+    _seed_forums(db, csa, csb, uni)
+    _seed_discussions(db)
+
     db.commit()
     return created
 
@@ -194,6 +197,158 @@ DEMO_PROFILES: dict[str, tuple] = {
         [],
     ),
 }
+
+
+def _seed_forums(db: Session, csa: m.Class, csb: m.Class, uni) -> None:
+    """Seed a few forums: approved + pending + demo memberships (idempotent)."""
+    try:
+        from app.modules.forum import models as fm  # lazy import to avoid cycle
+    except Exception:
+        return
+    rep = db.scalar(select(m.User).where(m.User.email == "rep@demo-university.edu"))
+    ada = db.scalar(select(m.User).where(m.User.email == "ada@demo-university.edu"))
+    ben = db.scalar(select(m.User).where(m.User.email == "ben@demo-university.edu"))
+    cara = db.scalar(select(m.User).where(m.User.email == "cara@demo-university.edu"))
+
+    specs: list[tuple[m.Class, str, str, fm.ForumStatus, m.User | None]] = [
+        (csa, "General Discussion", "Campus-wide chat for CS-2024-A", fm.ForumStatus.APPROVED, ada),
+        (csa, "DSA Doubts", "Data structures and algorithms Q&A", fm.ForumStatus.APPROVED, rep),
+        (csa, "Project Discussion", "Final year project ideas and teams", fm.ForumStatus.APPROVED, rep),
+        (csa, "Resources", "Share notes, links and past papers", fm.ForumStatus.APPROVED, rep),
+        (csa, "Exam Prep", "Proposal awaiting rep approval", fm.ForumStatus.PENDING, ada),
+        (csb, "General Discussion", "Welcome forum for CS-2024-B", fm.ForumStatus.APPROVED, cara),
+    ]
+    for cls, name, desc, status, creator in specs:
+        existing = db.scalar(select(fm.Forum).where(fm.Forum.class_id == cls.id, fm.Forum.name == name))
+        if existing is None:
+            f = fm.Forum(
+                class_id=cls.id,
+                name=name,
+                description=desc,
+                status=status,
+                created_by=creator.id if creator else None,
+                approved_by=rep.id if status == fm.ForumStatus.APPROVED and rep else None,
+            )
+            db.add(f)
+            db.flush()
+            existing = f
+        else:
+            # Keep status/description in sync for idempotency, but don't override pending
+            if existing.status != status and existing.name != "Exam Prep":
+                existing.status = status
+                db.add(existing)
+        # Demo memberships: ada + ben joined General Discussion (csa)
+        if existing.name == "General Discussion" and existing.class_id == csa.id:
+            for u in [ada, ben, rep]:
+                if u is None:
+                    continue
+                if (
+                    db.scalar(
+                        select(fm.ForumMembership).where(
+                            fm.ForumMembership.forum_id == existing.id, fm.ForumMembership.user_id == u.id
+                        )
+                    )
+                    is None
+                ):
+                    db.add(fm.ForumMembership(forum_id=existing.id, user_id=u.id))
+        if existing.name == "DSA Doubts" and existing.status == fm.ForumStatus.APPROVED:
+            if ada and db.scalar(select(fm.ForumMembership).where(fm.ForumMembership.forum_id == existing.id, fm.ForumMembership.user_id == ada.id)) is None:
+                db.add(fm.ForumMembership(forum_id=existing.id, user_id=ada.id))
+    db.flush()
+
+
+def _seed_discussions(db: Session) -> None:
+    """Add small realistic discussion data to approved forums (idempotent)."""
+    try:
+        from app.modules.forum import models as fm
+    except Exception:
+        return
+    # ensure forums exist first
+    def _forum(cls_name: str, forum_name: str):
+        return db.scalar(
+            select(fm.Forum)
+            .join(m.Class, m.Class.id == fm.Forum.class_id)
+            .where(m.Class.name == cls_name, fm.Forum.name == forum_name)
+        )
+    rep = db.scalar(select(m.User).where(m.User.email == "rep@demo-university.edu"))
+    ada = db.scalar(select(m.User).where(m.User.email == "ada@demo-university.edu"))
+    ben = db.scalar(select(m.User).where(m.User.email == "ben@demo-university.edu"))
+    # ensure memberships for seed authors
+    def _ensure_member(forum, user):
+        if forum is None or user is None:
+            return
+        if db.scalar(select(fm.ForumMembership).where(fm.ForumMembership.forum_id == forum.id, fm.ForumMembership.user_id == user.id)) is None:
+            db.add(fm.ForumMembership(forum_id=forum.id, user_id=user.id))
+    # define posts per forum: (cls, forum_name) -> list[(author_email, content)]
+    posts_spec: dict[tuple[str, str], list[tuple[str, str]]] = {
+        ("CS-2024-A", "General Discussion"): [
+            ("ada@demo-university.edu", "Hey everyone! Excited for the new semester. Any study group plans?"),
+            ("ben@demo-university.edu", "Welcome! I made a shared drive for notes — check the Resources forum."),
+            ("rep@demo-university.edu", "Hey folks — class rep here. Ping me for forum proposals or issues."),
+            ("ada@demo-university.edu", "Anyone going to the hackathon next weekend?"),
+        ],
+        ("CS-2024-A", "DSA Doubts"): [
+            ("ada@demo-university.edu", "How do we approach graph traversal for the assignment? BFS or DFS?"),
+            ("ben@demo-university.edu", "Can someone explain time complexity of quicksort worst case?"),
+            ("rep@demo-university.edu", "Resources for DP practice — share your favourite problem sets below."),
+            ("ada@demo-university.edu", "Stuck on heap implementation — any pointers?"),
+        ],
+        ("CS-2024-A", "Project Discussion"): [
+            ("ben@demo-university.edu", "Looking for teammates for the robotics project — I do frontend + sensors."),
+            ("ada@demo-university.edu", "I can handle backend + ML. Let's team up!"),
+            ("rep@demo-university.edu", "Reminder: project proposals due Friday. Use the forum to recruit."),
+        ],
+        ("CS-2024-A", "Resources"): [
+            ("rep@demo-university.edu", "Pinned: past papers and lecture slides -> https://example.com/resources"),
+            ("ben@demo-university.edu", "My notes for Algorithms week 3 — hope it helps!"),
+        ],
+    }
+    # quick email -> user map
+    users_by_email = {u.email: u for u in db.scalars(select(m.User).where(m.User.email.in_(["rep@demo-university.edu","ada@demo-university.edu","ben@demo-university.edu"]))).all()}
+    # create posts idempotently by content prefix match
+    for (cls_name, forum_name), posts in posts_spec.items():
+        forum = _forum(cls_name, forum_name)
+        if forum is None:
+            continue
+        for email, content in posts:
+            user = users_by_email.get(email)
+            _ensure_member(forum, user)
+            # check existing post with same forum and content prefix
+            exists = db.scalar(select(fm.Post).where(fm.Post.forum_id == forum.id, fm.Post.content == content))
+            if exists:
+                post = exists
+            else:
+                post = fm.Post(forum_id=forum.id, author_id=user.id if user else None, content=content)
+                db.add(post)
+                db.flush()
+            # add comments/likes for this post
+            # comment spec: mapping content prefix -> comments
+            # For demo, add a couple comments on first posts
+            if post.content.startswith("How do we approach"):
+                # comment from ben
+                if ben and db.scalar(select(fm.Comment).where(fm.Comment.post_id == post.id, fm.Comment.content == "Try using BFS for shortest path, DFS for connectivity. I can share my notes!")) is None:
+                    c = fm.Comment(post_id=post.id, author_id=ben.id, content="Try using BFS for shortest path, DFS for connectivity. I can share my notes!")
+                    db.add(c); db.flush()
+                    # notification to post author
+                    if post.author_id and post.author_id != ben.id:
+                        if db.scalar(select(fm.Notification).where(fm.Notification.comment_id == c.id)) is None:
+                            db.add(fm.Notification(user_id=post.author_id, actor_id=ben.id, type="COMMENT_ON_POST", post_id=post.id, forum_id=forum.id, comment_id=c.id, message="Someone commented on your post in DSA Doubts"))
+                if rep and db.scalar(select(fm.Comment).where(fm.Comment.post_id == post.id, fm.Comment.content == "Office hours tomorrow 4pm — bring your code.")) is None:
+                    db.add(fm.Comment(post_id=post.id, author_id=rep.id, content="Office hours tomorrow 4pm — bring your code."))
+            if post.content.startswith("Hey everyone"):
+                if ben and db.scalar(select(fm.Comment).where(fm.Comment.post_id == post.id, fm.Comment.content == "Count me in! When do we meet?")) is None:
+                    db.add(fm.Comment(post_id=post.id, author_id=ben.id, content="Count me in! When do we meet?"))
+                if rep and db.scalar(select(fm.Comment).where(fm.Comment.post_id == post.id, fm.Comment.content == "Let's do Thursday library 3pm.")) is None:
+                    db.add(fm.Comment(post_id=post.id, author_id=rep.id, content="Let's do Thursday library 3pm."))
+            # likes: every post gets likes from other users
+            for liker in [ada, ben, rep]:
+                if liker is None or liker.id == post.author_id:
+                    continue
+                # give like to first 2 posts per forum
+                if posts.index((email, content)) < 2:
+                    if db.scalar(select(fm.PostReaction).where(fm.PostReaction.post_id == post.id, fm.PostReaction.user_id == liker.id)) is None:
+                        db.add(fm.PostReaction(post_id=post.id, user_id=liker.id))
+    db.flush()
 
 
 def _enrich_demo_profile(db, user: m.User, email: str) -> None:
