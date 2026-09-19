@@ -471,3 +471,121 @@ export function listNotifications(token: string, limit = 20, offset = 0): Promis
 export function markNotificationRead(token: string, notificationId: string): Promise<Notification> {
   return request<Notification>(`/api/v1/notifications/${notificationId}/read`, { token, method: "PATCH", body: {} });
 }
+
+// ---- Connections types & API ----
+
+export type ConnectionStatusState = "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED" | "REJECTED" | "SELF";
+export type ConnectionRowStatus = "PENDING" | "ACCEPTED" | "REJECTED";
+
+export type ConnectionRow = {
+  id: string;
+  requester_id: string;
+  recipient_id: string;
+  status: ConnectionRowStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConnectionUser = {
+  user_id: string;
+  display_name: string | null;
+  headline: string | null;
+  avatar_url: string | null;
+  role: string | null;
+  verification_status: string | null;
+  connection_id: string | null;
+  status: ConnectionRowStatus | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ConnectionStatusResp = {
+  status: ConnectionStatusState;
+  connection: ConnectionRow | null;
+};
+
+export type MutualsResp = {
+  count: number;
+  users: ConnectionUser[];
+};
+
+export function listMyConnections(token: string): Promise<ConnectionUser[]> {
+  return request<ConnectionUser[]>(`/api/v1/connections`, { token });
+}
+export function listIncomingRequests(token: string): Promise<ConnectionUser[]> {
+  return request<ConnectionUser[]>(`/api/v1/connections/requests/incoming`, { token });
+}
+export function listOutgoingRequests(token: string): Promise<ConnectionUser[]> {
+  return request<ConnectionUser[]>(`/api/v1/connections/requests/outgoing`, { token });
+}
+export function fetchConnectionStatus(token: string, userId: string): Promise<ConnectionStatusResp> {
+  return request<ConnectionStatusResp>(`/api/v1/connections/${userId}/status`, { token });
+}
+export function fetchMutuals(token: string, userId: string): Promise<MutualsResp> {
+  return request<MutualsResp>(`/api/v1/connections/${userId}/mutuals`, { token });
+}
+export function sendConnectionRequest(token: string, userId: string): Promise<ConnectionRow> {
+  return request<ConnectionRow>(`/api/v1/connections/${userId}/request`, { token, method: "POST", body: {} });
+}
+export function acceptConnection(token: string, userId: string): Promise<ConnectionRow> {
+  return request<ConnectionRow>(`/api/v1/connections/${userId}/accept`, { token, method: "POST", body: {} });
+}
+export function rejectConnection(token: string, userId: string): Promise<ConnectionRow> {
+  return request<ConnectionRow>(`/api/v1/connections/${userId}/reject`, { token, method: "POST", body: {} });
+}
+export function cancelConnectionRequest(token: string, userId: string): Promise<void> {
+  return request<void>(`/api/v1/connections/${userId}/request`, { token, method: "DELETE" });
+}
+export function removeConnection(token: string, userId: string): Promise<void> {
+  return request<void>(`/api/v1/connections/${userId}`, { token, method: "DELETE" });
+}
+
+// ---- Graph types & API ----
+
+export type GraphNodeType =
+  | "STUDENT"
+  | "UNIVERSITY"
+  | "DEPARTMENT"
+  | "PROGRAM"
+  | "BATCH"
+  | "CLASS"
+  | "FORUM"
+  | "SKILL"
+  | "INTEREST";
+
+export type GraphEdgeType =
+  | "BELONGS_TO"
+  | "ENROLLED_IN"
+  | "IN_PROGRAM"
+  | "IN_BATCH"
+  | "IN_CLASS"
+  | "MEMBER_OF"
+  | "PARTICIPATES_IN"
+  | "HAS_SKILL"
+  | "HAS_INTEREST"
+  | "CONNECTED_TO";
+
+export type GraphNode = {
+  id: string;
+  type: GraphNodeType;
+  label: string;
+  metadata: Record<string, unknown>;
+};
+
+export type GraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: GraphEdgeType;
+  metadata: Record<string, unknown>;
+};
+
+export type GraphResponse = {
+  root_id: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+};
+
+export function fetchGraph(token: string): Promise<GraphResponse> {
+  return request<GraphResponse>(`/api/v1/graph/me`, { token });
+}

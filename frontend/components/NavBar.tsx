@@ -22,6 +22,8 @@ export function NavBar() {
               <Link className="hover:text-zinc-900" href="/app">My space</Link>
               <Link className="hover:text-zinc-900" href="/app/profile">Profile</Link>
               <Link className="hover:text-zinc-900" href="/app/class">Class</Link>
+              <Link className="hover:text-zinc-900" href="/app/connections">Connections</Link>
+              <Link className="hover:text-zinc-900" href="/app/network">Network</Link>
               <Link className="hover:text-zinc-900" href="/app/notifications">Notifications</Link>
               {isAdmin && (
                 <Link className="hover:text-zinc-900" href="/app/admin">Admin</Link>

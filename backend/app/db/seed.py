@@ -97,6 +97,7 @@ def seed(db: Session) -> dict[str, int]:
         ("ada@demo-university.edu", "Ada Student", m.Role.STUDENT, "DEMO-2024-001", csa),
         ("ben@demo-university.edu", "Ben Student", m.Role.STUDENT, "DEMO-2024-002", csa),
         ("cara@demo-university.edu", "Cara Student", m.Role.STUDENT, "DEMO-2024-003", csb),
+        ("diana@demo-university.edu", "Diana Student", m.Role.STUDENT, "DEMO-2024-004", csa),
     ]
 
     for email, display_name, role, student_no, cls in demo_users:
@@ -141,6 +142,7 @@ def seed(db: Session) -> dict[str, int]:
 
     _seed_forums(db, csa, csb, uni)
     _seed_discussions(db)
+    _seed_connections(db)
 
     db.commit()
     return created
@@ -195,6 +197,17 @@ DEMO_PROFILES: dict[str, tuple] = {
         ["public-speaking"],
         ["open-source"],
         [],
+    ),
+    "diana@demo-university.edu": (
+        "Systems-curious student",
+        "Exploring networks and systems design.",
+        None,
+        None,
+        "Systems engineering",
+        "Distributed systems",
+        ["sql", "python"],
+        ["open-source", "photography"],
+        ["hiking"],
     ),
 }
 
@@ -348,6 +361,50 @@ def _seed_discussions(db: Session) -> None:
                 if posts.index((email, content)) < 2:
                     if db.scalar(select(fm.PostReaction).where(fm.PostReaction.post_id == post.id, fm.PostReaction.user_id == liker.id)) is None:
                         db.add(fm.PostReaction(post_id=post.id, user_id=liker.id))
+    db.flush()
+
+
+def _seed_connections(db: Session) -> None:
+    """Seed realistic connections for UI demo (idempotent)."""
+    try:
+        from app.modules.connections import models as cm
+        from app.modules.forum import models as fm
+    except Exception:
+        return
+    ada = db.scalar(select(m.User).where(m.User.email == "ada@demo-university.edu"))
+    ben = db.scalar(select(m.User).where(m.User.email == "ben@demo-university.edu"))
+    cara = db.scalar(select(m.User).where(m.User.email == "cara@demo-university.edu"))
+    diana = db.scalar(select(m.User).where(m.User.email == "diana@demo-university.edu"))
+    if not all([ada, ben, cara, diana]):
+        return
+    # Desired edges: Ada->Ben ACCEPTED, Ada->Cara ACCEPTED, Ben->Diana ACCEPTED, Cara->Diana PENDING
+    specs: list[tuple[m.User, m.User, cm.ConnectionStatus]] = [
+        (ada, ben, cm.ConnectionStatus.ACCEPTED),
+        (ada, cara, cm.ConnectionStatus.ACCEPTED),
+        (ben, diana, cm.ConnectionStatus.ACCEPTED),
+        (cara, diana, cm.ConnectionStatus.PENDING),
+    ]
+    for req, rec, status in specs:
+        # check existing in either direction
+        existing = db.scalar(
+            select(cm.Connection).where(
+                ((cm.Connection.requester_id == req.id) & (cm.Connection.recipient_id == rec.id))
+                | ((cm.Connection.requester_id == rec.id) & (cm.Connection.recipient_id == req.id))
+            )
+        )
+        if existing is None:
+            db.add(cm.Connection(requester_id=req.id, recipient_id=rec.id, status=status))
+            db.flush()
+            if status == cm.ConnectionStatus.PENDING:
+                # notification for recipient
+                if db.scalar(select(fm.Notification).where(fm.Notification.user_id == rec.id, fm.Notification.actor_id == req.id, fm.Notification.type == "CONNECTION_REQUEST")) is None:
+                    db.add(fm.Notification(user_id=rec.id, actor_id=req.id, type="CONNECTION_REQUEST", message="A student sent you a connection request."))
+        else:
+            # sync status if mismatched (keep idempotent)
+            if existing.status != status:
+                # for demo, keep PENDING vs ACCEPTED distinction
+                existing.status = status
+                db.add(existing)
     db.flush()
 
 

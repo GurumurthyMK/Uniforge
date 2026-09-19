@@ -63,6 +63,8 @@ function Dashboard() {
         {primary?.class_id && (
           <Card href="/app/class" title="My class" hint="Class context, representative and classmates." />
         )}
+        <Card href="/app/connections" title="Connections" hint="Your network, incoming and sent requests." />
+        <Card href="/app/network" title="Your University Network" hint="Academic context, forums, skills, interests and connections in one graph." />
         {isAdmin && (
           <Card href="/app/admin" title="Structure admin" hint="Inspect and manage the academic hierarchy." />
         )}
